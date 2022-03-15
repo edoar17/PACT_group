@@ -47,6 +47,8 @@ def graph1(df, title):
     colors = ['g' if i>=0 else 'r' for i in y1]
     axs[1].bar(x, y1, color=colors)
     axs[1].set_title('Cumulative Return')
+    
+    fig.savefig(f"plots/{title}.png", format='png')
     fig.show()
     
 
@@ -103,6 +105,7 @@ def graph2(df, title):
     axs.set_ylim(rango)
     axs.set_title(title)
     
+    fig.savefig(f"plots/{title}.png", format='png')
     fig.show()
 
 
@@ -128,8 +131,7 @@ for i in list(competitors):
     
     data = prep_features(bench, pgh1)
     graph2(data, title=f'Regression of PACT with {i}')
-    
-    
+        
 for i in list(currencies):
     bench = yf.Ticker(i)
     bench = bench.history(period='3y', interva='1d')
