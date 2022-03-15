@@ -11,10 +11,11 @@ import numpy as np
 import yfinance as yf
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
-from datetime import datetime
 import warnings
 warnings.filterwarnings("ignore")
-
+import os
+import seaborn as sns
+import dataframe_image as dfi
 
 def log_return(series):
     return np.log(series).diff()
@@ -48,7 +49,9 @@ def graph1(df, title):
     axs[1].bar(x, y1, color=colors)
     axs[1].set_title('Cumulative Return')
     
-    fig.savefig(f"plots/{title}.png", format='png')
+    path = f"plots/{title}.png"
+    if not os.path.exists(path):
+        fig.savefig(f"plots/{title}.png", format='png')
     fig.show()
     
 
@@ -76,7 +79,7 @@ competitors = {'PPG.AX': 'Pro-Pac Packaging Limited', #101M
 
 #Linear regressions
 def prep_features(df, df2):
-    df = calcs(df.loc[df.index>=pandemic_bottom])
+    # df = df.loc[df.index>=pandemic_bottom]
     data = df[['log_return']].join(df2['log_return'], rsuffix='_pact')
     data = data.dropna()
     return data
@@ -105,21 +108,25 @@ def graph2(df, title):
     axs.set_ylim(rango)
     axs.set_title(title)
     
-    fig.savefig(f"plots/{title}.png", format='png')
+    path = f"plots/{title}.png"
+    if not os.path.exists(path):
+        fig.savefig(f"plots/{title}.png", format='png')
     fig.show()
 
 
-# EWA vs PGH
-bench = list(indexes)[0]
-bench = yf.Ticker(bench)
-bench = bench.history(period='3y', interva='1d')
 
-data = prep_features(bench, pgh1)
-graph2(data, title='Regression of PACT with ASX')
+# Add performance
+performance = pd.DataFrame(columns=['over', 'value'])
 
-for i in list(indexes)[1:]:
+for i in list(indexes):
     bench = yf.Ticker(i)
-    bench = bench.history(period='3y', interva='1d')
+    bench = bench.history(period='3y', interval='1d')
+    bench = calcs(bench.loc[bench.index>=pandemic_bottom])
+    
+    row = {'over': i, 
+           'value': pgh1['cum_ret'][-1]-bench['cum_ret'][-1]}
+    performance = performance.append(row, ignore_index=True)
+    # print(performance)
     
     data = prep_features(bench, pgh1)
     graph2(data, title=f'Regression of PACT with {i}')
@@ -128,6 +135,12 @@ for i in list(indexes)[1:]:
 for i in list(competitors):
     bench = yf.Ticker(i)
     bench = bench.history(period='3y', interva='1d')
+    bench = calcs(bench.loc[bench.index>=pandemic_bottom])
+    
+    row = {'over': i, 
+           'value': pgh1['cum_ret'][-1]-bench['cum_ret'][-1]}
+
+    performance = performance.append(row, ignore_index=True)
     
     data = prep_features(bench, pgh1)
     graph2(data, title=f'Regression of PACT with {i}')
@@ -135,18 +148,18 @@ for i in list(competitors):
 for i in list(currencies):
     bench = yf.Ticker(i)
     bench = bench.history(period='3y', interva='1d')
+    bench = calcs(bench.loc[bench.index>=pandemic_bottom])
+    
+    row = {'over': i, 
+           'value': pgh1['cum_ret'][-1]-bench['cum_ret'][-1]}
+    performance = performance.append(row, ignore_index=True)
     
     data = prep_features(bench, pgh1)
     graph2(data, title=f'Regression of PACT with {i}')
 
+dfi.export(performance,"plots/performance.png")
 
 
-
-    
-    
-    
-    
-    
     
     
     
