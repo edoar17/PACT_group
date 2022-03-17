@@ -16,6 +16,7 @@ warnings.filterwarnings("ignore")
 import os
 import seaborn as sns
 import dataframe_image as dfi
+from sklearn.preprocessing import MinMaxScaler
 
 def log_return(series):
     return np.log(series).diff()
@@ -59,7 +60,7 @@ pgh = calcs(pgh)
 graph1(pgh, 'Price of PGH.AX')
 
 # From pandemic low
-pandemic_bottom = '2020-03-25'
+pandemic_bottom = '2020-03-20'
 pgh1 = calcs(pgh.loc[pgh.index>=pandemic_bottom])
 graph1(pgh1, 'Price of PGH.AX from pandemic low')
 
@@ -77,11 +78,15 @@ competitors = {'PPG.AX': 'Pro-Pac Packaging Limited', #101M
                'ORA.AX': 'Orora Limited', #3B
                'AMC.AX': 'Amcor plc'} #23B
 
+
 #Linear regressions
 def prep_features(df, df2):
     # df = df.loc[df.index>=pandemic_bottom]
+
     data = df[['log_return']].join(df2['log_return'], rsuffix='_pact')
     data = data.dropna()
+    data['log_return'] = data['log_return']/data['log_return'].max()
+    data['log_return_pact'] = data['log_return_pact']/data['log_return_pact'].max()
     return data
 
 # plot returns
@@ -117,11 +122,14 @@ def graph2(df, title):
 
 # Add performance
 performance = pd.DataFrame(columns=['over', 'value'])
+prices = pgh1[['cum_ret']]
 
 for i in list(indexes):
     bench = yf.Ticker(i)
     bench = bench.history(period='3y', interval='1d')
     bench = calcs(bench.loc[bench.index>=pandemic_bottom])
+    col_name = i+'_Close'
+    prices[col_name] = bench.cum_ret
     
     row = {'over': i, 
            'value': pgh1['cum_ret'][-1]-bench['cum_ret'][-1]}
@@ -136,6 +144,8 @@ for i in list(competitors):
     bench = yf.Ticker(i)
     bench = bench.history(period='3y', interva='1d')
     bench = calcs(bench.loc[bench.index>=pandemic_bottom])
+    col_name = i+'_Close'
+    prices[col_name] = bench.cum_ret
     
     row = {'over': i, 
            'value': pgh1['cum_ret'][-1]-bench['cum_ret'][-1]}
@@ -149,6 +159,9 @@ for i in list(currencies):
     bench = yf.Ticker(i)
     bench = bench.history(period='3y', interva='1d')
     bench = calcs(bench.loc[bench.index>=pandemic_bottom])
+    print(bench.cum_ret)
+    col_name = i+'_Close'
+    prices[col_name] = bench.cum_ret
     
     row = {'over': i, 
            'value': pgh1['cum_ret'][-1]-bench['cum_ret'][-1]}
@@ -156,9 +169,19 @@ for i in list(currencies):
     
     data = prep_features(bench, pgh1)
     graph2(data, title=f'Regression of PACT with {i}')
-
 dfi.export(performance,"plots/performance.png")
 
+prices = prices.dropna()
+
+fig, axs = plt.subplots(1,1,figsize=(12,8))
+axs.grid(alpha=0.5, linestyle='dashed', zorder=-1)
+for c in prices.columns:
+    y = prices[c].values
+    # y = y/y.max()
+    axs.plot(prices.index, y, label=c)
+axs.legend()
+axs.set_title('All comparable cumulative returns since '+pandemic_bottom)
+fig.show()
 
     
     
@@ -169,8 +192,10 @@ dfi.export(performance,"plots/performance.png")
     
     
     
-    
-    
+
+
+
+
 
 
 
