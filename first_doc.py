@@ -17,6 +17,7 @@ import os
 import seaborn as sns
 import dataframe_image as dfi
 from sklearn.preprocessing import MinMaxScaler
+import statsmodels.api as sm
 
 def log_return(series):
     return np.log(series).diff()
@@ -43,7 +44,7 @@ def graph1(df, title):
     axs[0].plot(x,y)
     axs[0].set_title(title)
     props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-    axs[0].text(0.15, 0.9, f'Cumulative Return is: {df.cum_ret[-1].round(4)} \n Coefficient is {reg.coef_.round(4)}', 
+    axs[0].text(0.15, 0.9, f'Cumulative Return is: {df.cum_ret[-1].round(4)}', 
                 horizontalalignment='center', verticalalignment='center', 
                 transform=axs[0].transAxes, bbox=props)
     colors = ['g' if i>=0 else 'r' for i in y1]
@@ -54,7 +55,7 @@ def graph1(df, title):
     if not os.path.exists(path):
         fig.savefig(f"plots/{title}.png", format='png')
     fig.show()
-    
+
 
 pgh = calcs(pgh)
 graph1(pgh, 'Price of PGH.AX')
@@ -68,7 +69,9 @@ graph1(pgh1, 'Price of PGH.AX from pandemic low')
 indexes = {'EWA': 'iShares MSCI-Australia ETF',
            '^AXJO': 'ASX 200',
            'FAIR.AX': 'Betashares Australian Sustainability Leaders ETF ',
-           'MVS.AX': 'VanEck Vectors Small Companies Masters ETF'}
+           'MVS.AX': 'VanEck Vectors Small Companies Masters ETF',
+           'DBC': 'Invesco DB Commodity Index Tracking Fund',
+           'DBO': 'Invesco DB Oil Fund'}
 
 currencies = {'AUDUSD=X': 'AUD/USD',
               'AUDJPY=X': 'AUD/JPY'}
@@ -91,109 +94,155 @@ def prep_features(df, df2):
 
 # plot returns
 def graph2(df, title):
-    x = np.array(df.iloc[:,0]).reshape(-1, 1)
-    y = np.array(df.iloc[:,1]).reshape(-1, 1) #Pact is the y
+    #Regression
+    x = df.iloc[:,0] #X's log_returns
+    y = df.iloc[:,1] #Pact is the y
 
-    reg = LinearRegression().fit(x, y)
-    pred = reg.predict(x)    
-    score = reg.score(x, y)
+    lm = sm.OLS(y, x)
+    reg = lm.fit()    
+    pred = reg.predict(x)
+    summary_text = reg.summary().as_text()
+    
+    #Plotting
+    x = np.array(df.iloc[:,0]).reshape(-1, 1) #X's log_returns
+    y = np.array(y).reshape(-1, 1)
+    pred = np.array(pred).reshape(-1, 1) #Pact is the y
 
     rango = [y.min(), y.max()]
 
-    fig, axs = plt.subplots(1,1, figsize=(12,8))
-    axs.grid(alpha=0.5, linestyle='dashed', zorder=-1)
-    axs.scatter(x,y)
-    axs.plot(x, pred, color='r')
+    fig, axs = plt.subplots(2,1, figsize=(12,12))
+    axs[0].grid(alpha=0.5, linestyle='dashed', zorder=-1)
+    axs[0].scatter(x,y)
+    axs[0].plot(x, pred, color='r')
+    axs[0].set_xlim(rango)
+    axs[0].set_ylim(rango)
+    axs[0].set_title(title)
     
     props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-    axs.text(0.15, 0.9, f'R^2 is: {score.round(4)} \n Coefficient is {reg.coef_.round(4)}', 
+    axs[1].set_axis_off()
+    axs[1].text(0.5, 0.5, summary_text, 
              horizontalalignment='center', verticalalignment='center', 
-             transform=axs.transAxes, bbox=props)
-    axs.set_xlim(rango)
-    axs.set_ylim(rango)
-    axs.set_title(title)
-    
+             bbox=props, size=10)
+    fig.tight_layout()
+
     path = f"plots/{title}.png"
-    if not os.path.exists(path):
-        fig.savefig(f"plots/{title}.png", format='png')
+    # if not os.path.exists(path):
+    fig.savefig(path, format='png')
     fig.show()
 
 
 
 # Add performance
 performance = pd.DataFrame(columns=['over', 'value'])
-prices = pgh1[['cum_ret']]
+prices = pgh1[['log_return']]
+cum_ret = pgh1[['cum_ret']]
 
 for i in list(indexes):
     bench = yf.Ticker(i)
     bench = bench.history(period='3y', interval='1d')
+    #Calculate returns, cum_ret
     bench = calcs(bench.loc[bench.index>=pandemic_bottom])
-    col_name = i+'_Close'
-    prices[col_name] = bench.cum_ret
     
+    #Save data to two dfs
+    col_name = i+'_log_return'
+    col_name1 = i+'_cum_ret'
+    prices[col_name] = bench.log_return
+    cum_ret[col_name1] = bench.cum_ret
+    
+    #Add overperformance of PGH relative
     row = {'over': i, 
            'value': pgh1['cum_ret'][-1]-bench['cum_ret'][-1]}
     performance = performance.append(row, ignore_index=True)
-    # print(performance)
     
+    #Returns normalized log_returns of both
     data = prep_features(bench, pgh1)
+    
+    #Scatter and plot regression line with regression summary
     graph2(data, title=f'Regression of PACT with {i}')
     
 
 for i in list(competitors):
     bench = yf.Ticker(i)
-    bench = bench.history(period='3y', interva='1d')
+    bench = bench.history(period='3y', interval='1d')
+    #Calculate returns, cum_ret
     bench = calcs(bench.loc[bench.index>=pandemic_bottom])
-    col_name = i+'_Close'
-    prices[col_name] = bench.cum_ret
     
+    #Save data to two dfs
+    col_name = i+'_log_return'
+    col_name1 = i+'_cum_ret'
+    prices[col_name] = bench.log_return
+    cum_ret[col_name1] = bench.cum_ret
+    
+    #Add overperformance of PGH relative
     row = {'over': i, 
            'value': pgh1['cum_ret'][-1]-bench['cum_ret'][-1]}
-
     performance = performance.append(row, ignore_index=True)
     
+    #Returns normalized log_returns of both
     data = prep_features(bench, pgh1)
+    
+    #Scatter and plot regression line with regression summary
     graph2(data, title=f'Regression of PACT with {i}')
         
 for i in list(currencies):
     bench = yf.Ticker(i)
-    bench = bench.history(period='3y', interva='1d')
+    bench = bench.history(period='3y', interval='1d')
+    #Calculate returns, cum_ret
     bench = calcs(bench.loc[bench.index>=pandemic_bottom])
-    print(bench.cum_ret)
-    col_name = i+'_Close'
-    prices[col_name] = bench.cum_ret
     
+    #Save data to two dfs
+    col_name = i+'_log_return'
+    col_name1 = i+'_cum_ret'
+    prices[col_name] = bench.log_return
+    cum_ret[col_name1] = bench.cum_ret
+    
+    #Add overperformance of PGH relative
     row = {'over': i, 
            'value': pgh1['cum_ret'][-1]-bench['cum_ret'][-1]}
     performance = performance.append(row, ignore_index=True)
     
+    #Returns normalized log_returns of both
     data = prep_features(bench, pgh1)
+    
+    #Scatter and plot regression line with regression summary
     graph2(data, title=f'Regression of PACT with {i}')
+    
 dfi.export(performance,"plots/performance.png")
 
 prices = prices.dropna()
+cum_ret = cum_ret.dropna()
 
 fig, axs = plt.subplots(1,1,figsize=(12,8))
 axs.grid(alpha=0.5, linestyle='dashed', zorder=-1)
-for c in prices.columns:
-    y = prices[c].values
+for c in cum_ret.columns:
+    y = cum_ret[c].values
     # y = y/y.max()
     axs.plot(prices.index, y, label=c)
+
 axs.legend()
 axs.set_title('All comparable cumulative returns since '+pandemic_bottom)
+path = "plots/cum_returns.png"
+# if not os.path.exists(path):
+fig.savefig(path, format='png')
 fig.show()
 
-    
-    
-    
-    
-    
-    
-    
-    
-    
+#Regression of pgh,asx200
+pgh = prices['log_return']
+asx = prices['^AXJO_log_return']
 
+lm = sm.OLS(pgh, asx)
+res = lm.fit()
+pred = res.predict(asx)
 
+with open('summary.txt', 'w') as fh:
+    fh.write(res.summary().as_text())
+
+print(res.summary())
+    
+reg = LinearRegression().fit(asx.values.reshape(-1,1), pgh.values.reshape(-1,1))
+pred = reg.predict(asx.values.reshape(-1,1))    
+score = reg.score(asx.values.reshape(-1,1), pgh.values.reshape(-1,1))
+reg.coef_
 
 
 
