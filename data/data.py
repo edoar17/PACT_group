@@ -55,7 +55,7 @@ asx.to_csv('data/ASX_semi')
 
 pgh = PGH_.history(period='5y', interval='1d')
 pgh['year'] = pgh.index.year
-pgh['quarter'] = pgh.index.quarter
+pgh['quarter'] = pgh.index.semi
 pgh = pgh.sort_values(['year', 'quarter']).drop_duplicates(['year', 'quarter'])
 pgh = pgh.loc[(pgh.quarter==2) | (pgh.quarter==4)]
 pgh['return'] = calc_return(pgh['Close'])
