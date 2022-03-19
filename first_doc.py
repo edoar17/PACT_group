@@ -29,10 +29,29 @@ def to_monthly(df, last_day=False):
         out = df.groupby([df.index.year, df.index.month]).tail(1)
     return out
  
-def calcs(df):
+def calcs(df, floor):
+    if not floor:
+        pass
+    elif floor=='monthly':
+        df['year'] = df.index.year
+        df['quarter'] = df.index.month
+        df = df.sort_values(['year', 'month']).drop_duplicates(['year', 'month'])
+    elif floor=='quarter':
+        df['year'] = df.index.year
+        df['quarter'] = df.index.quarter
+        df = df.sort_values(['year', 'quarter']).drop_duplicates(['year', 'quarter'])
+    elif floor=='semi':    
+        df['year'] = df.index.year
+        df['quarter'] = df.index.quarter
+        df = df.sort_values(['year', 'quarter']).drop_duplicates(['year', 'quarter'])
+        df = df.loc[(df.quarter==2) | (df.quarter==4)]
+        # print(df)
+    
+        
     df['log_return'] = log_return(df['Close'])
     df['cum_ret'] = np.exp(df['log_return'].cumsum())
     df = df.dropna()
+    
     return df
 
 # Graph price action
@@ -64,14 +83,14 @@ def graph1(df, title):
 ticker = 'PGH.AX'
 
 PGH_ = yf.Ticker(ticker)
-pgh = PGH_.history(period='5y', interva='1d')
-pgh = calcs(pgh)
+pgh = PGH_.history(period='5y', interval='1d')
+pgh = calcs(pgh, False)
 graph1(pgh, 'Price of PGH.AX')
 
 # From pandemic low
 pandemic_bottom = '1900-01-01'
-pgh1 = calcs(pgh.loc[pgh.index>=pandemic_bottom])
-# graph1(pgh1, 'Price of PGH.AX from pandemic low')
+# pgh = calcs(pgh.loc[pgh.index>=pandemic_bottom])
+# # graph1(pgh1, 'Price of PGH.AX from pandemic low')
 
 # Check relevant ETFs
 indexes = {'EWA': 'iShares MSCI-Australia ETF',
@@ -84,7 +103,10 @@ indexes = {'EWA': 'iShares MSCI-Australia ETF',
            'ERTH':'Invesco MSCI Sustainable Future ETF '}
 
 currencies = {'AUDUSD=X': 'AUD/USD',
-              'AUDJPY=X': 'AUD/JPY'}
+              'AUDJPY=X': 'AUD/JPY',
+              'AUDNZD=X': 'AUD/NZD',
+              'AUDHKD=X': 'AUD/HKD',
+              'AUDCNY=X': 'AUDCNY'}
 
                 # PPG.AX 800M
 competitors = {'PPG.AX': 'Pro-Pac Packaging Limited', #101M
@@ -106,7 +128,7 @@ def prep_features(df, df2):
     return data
 
 # plot returns
-def graph2(df, title):
+def graph2(df, title, folder):
     #Regression
     x = df.iloc[:,0] #X's log_returns
     y = df.iloc[:,1] #Pact is the y
@@ -121,7 +143,7 @@ def graph2(df, title):
     y = np.array(y).reshape(-1, 1)
     pred = np.array(pred).reshape(-1, 1) #Pact is the y
 
-    rango = [y.min(), y.max()]
+    rango = [-1, 1]
 
     fig, axs = plt.subplots(2,1, figsize=(12,12))
     axs[0].grid(alpha=0.5, linestyle='dashed', zorder=-1)
@@ -138,89 +160,176 @@ def graph2(df, title):
              bbox=props, size=10)
     fig.tight_layout()
 
-    path = f"plots/{title}.png"
+    path = f"{folder}/{title}.png"
     # if not os.path.exists(path):
     fig.savefig(path, format='png')
     fig.show()
 
-
-
-# Add performance
-performance = pd.DataFrame(columns=['over', 'value'])
-prices = pgh1[['log_return']]
-cum_ret = pgh1[['cum_ret']]
-
-for i in list(indexes):
-    bench = yf.Ticker(i)
-    bench = bench.history(period='5y', interval='1d')
-    #Calculate returns, cum_ret
-    bench = calcs(bench.loc[bench.index>=pandemic_bottom])
+def do_plots(pgh, indexes, competitors, currencies, folder, interval, floor):
+    # Add performance
+    performance = pd.DataFrame(columns=['over', 'value'])
+    prices = pgh[['log_return']]
+    cum_ret = pgh[['cum_ret']]   
     
-    #Save data to two dfs
-    col_name = i+'_log_return'
-    col_name1 = i+'_cum_ret'
-    prices[col_name] = bench.log_return
-    cum_ret[col_name1] = bench.cum_ret
-    
-    #Add overperformance of PGH relative
-    row = {'over': i, 
-           'value': pgh1['cum_ret'][-1]-bench['cum_ret'][-1]}
-    performance = performance.append(row, ignore_index=True)
-    
-    #Returns normalized log_returns of both
-    data = prep_features(bench, pgh1)
-    
-    #Scatter and plot regression line with regression summary
-    graph2(data, title=f'Regression of PACT with {i}')
-    
-
-for i in list(competitors):
-    bench = yf.Ticker(i)
-    bench = bench.history(period='5y', interval='1d')
-    #Calculate returns, cum_ret
-    bench = calcs(bench.loc[bench.index>=pandemic_bottom])
-    
-    #Save data to two dfs
-    col_name = i+'_log_return'
-    col_name1 = i+'_cum_ret'
-    prices[col_name] = bench.log_return
-    cum_ret[col_name1] = bench.cum_ret
-    
-    #Add overperformance of PGH relative
-    row = {'over': i, 
-           'value': pgh1['cum_ret'][-1]-bench['cum_ret'][-1]}
-    performance = performance.append(row, ignore_index=True)
-    
-    #Returns normalized log_returns of both
-    data = prep_features(bench, pgh1)
-    
-    #Scatter and plot regression line with regression summary
-    graph2(data, title=f'Regression of PACT with {i}')
+    for i in list(indexes):
+        bench = yf.Ticker(i)
+        bench = bench.history(period='5y', interval=interval)
+        #Calculate returns, cum_ret
+        bench = calcs(bench.loc[bench.index>=pandemic_bottom], floor)
         
-for i in list(currencies):
-    bench = yf.Ticker(i)
-    bench = bench.history(period='5y', interval='1d')
-    #Calculate returns, cum_ret
-    bench = calcs(bench.loc[bench.index>=pandemic_bottom])
-    # print(bench)
-    #Save data to two dfs
-    col_name = i+'_log_return'
-    col_name1 = i+'_cum_ret'
-    prices[col_name] = bench.log_return
-    cum_ret[col_name1] = bench.cum_ret
+        #Save data to two dfs
+        col_name = i+'_log_return'
+        col_name1 = i+'_cum_ret'
+        prices[col_name] = bench.log_return
+        cum_ret[col_name1] = bench.cum_ret
+        
+        #Add overperformance of PGH relative
+        row = {'over': i, 
+               'value': pgh1['cum_ret'][-1]-bench['cum_ret'][-1]}
+        performance = performance.append(row, ignore_index=True)
+        
+        #Returns normalized log_returns of both
+        data = prep_features(bench, pgh)
+        
+        #Scatter and plot regression line with regression summary
+        graph2(data, title=f'Regression of PACT with {i}', folder=folder)
+        
     
-    #Add overperformance of PGH relative
-    row = {'over': i, 
-           'value': pgh1['cum_ret'][-1]-bench['cum_ret'][-1]}
-    performance = performance.append(row, ignore_index=True)
+    for i in list(competitors):
+        bench = yf.Ticker(i)
+        bench = bench.history(period='5y', interval=interval)
+        #Calculate returns, cum_ret
+        bench = calcs(bench.loc[bench.index>=pandemic_bottom], floor)
+        
+        #Save data to two dfs
+        col_name = i+'_log_return'
+        col_name1 = i+'_cum_ret'
+        prices[col_name] = bench.log_return
+        cum_ret[col_name1] = bench.cum_ret
+        
+        #Add overperformance of PGH relative
+        row = {'over': i, 
+               'value': pgh['cum_ret'][-1]-bench['cum_ret'][-1]}
+        performance = performance.append(row, ignore_index=True)
+        
+        #Returns normalized log_returns of both
+        data = prep_features(bench, pgh)
+        
+        #Scatter and plot regression line with regression summary
+        graph2(data, title=f'Regression of PACT with {i}', folder=folder)
+            
+    for i in list(currencies):
+        bench = yf.Ticker(i)
+        bench = bench.history(period='5y', interval=interval)
+        #Calculate returns, cum_ret
+        bench = calcs(bench.loc[bench.index>=pandemic_bottom], floor)
+        # print(bench)
+        #Save data to two dfs
+        col_name = i+'_log_return'
+        col_name1 = i+'_cum_ret'
+        prices[col_name] = bench.log_return
+        cum_ret[col_name1] = bench.cum_ret
+        
+        #Add overperformance of PGH relative
+        row = {'over': i, 
+               'value': pgh['cum_ret'][-1]-bench['cum_ret'][-1]}
+        performance = performance.append(row, ignore_index=True)
+        
+        #Returns normalized log_returns of both
+        data = prep_features(bench, pgh)
+        
+        #Scatter and plot regression line with regression summary
+        graph2(data, title=f'Regression of PACT with {i}', folder=folder)
+        
+    dfi.export(performance,f"{folder}/performance.png")
+
+pgh1 = calcs(pgh, floor=False)
+do_plots(pgh1, indexes, competitors, currencies, folder='plots', interval='1d', floor=False)
+
+pgh1 = calcs(pgh, floor='semi')
+do_plots(pgh1, indexes, competitors, currencies, folder='plots_semi', interval='1d', floor='semi')
+
+pgh1 = calcs(pgh, floor='quarter')
+do_plots(pgh1, indexes, competitors, currencies, folder='plots_quarterly', interval='1d', floor='quarter')
+
+
+
+# # Add performance
+# performance = pd.DataFrame(columns=['over', 'value'])
+# prices = pgh1[['log_return']]
+# cum_ret = pgh1[['cum_ret']]
+
+# for i in list(indexes):
+#     bench = yf.Ticker(i)
+#     bench = bench.history(period='5y', interval='1d')
+#     #Calculate returns, cum_ret
+#     bench = calcs(bench.loc[bench.index>=pandemic_bottom])
     
-    #Returns normalized log_returns of both
-    data = prep_features(bench, pgh1)
+#     #Save data to two dfs
+#     col_name = i+'_log_return'
+#     col_name1 = i+'_cum_ret'
+#     prices[col_name] = bench.log_return
+#     cum_ret[col_name1] = bench.cum_ret
     
-    #Scatter and plot regression line with regression summary
-    graph2(data, title=f'Regression of PACT with {i}')
+#     #Add overperformance of PGH relative
+#     row = {'over': i, 
+#            'value': pgh1['cum_ret'][-1]-bench['cum_ret'][-1]}
+#     performance = performance.append(row, ignore_index=True)
     
-dfi.export(performance,"plots/performance.png")
+#     #Returns normalized log_returns of both
+#     data = prep_features(bench, pgh1)
+    
+#     #Scatter and plot regression line with regression summary
+#     graph2(data, title=f'Regression of PACT with {i}')
+    
+
+# for i in list(competitors):
+#     bench = yf.Ticker(i)
+#     bench = bench.history(period='5y', interval='1d')
+#     #Calculate returns, cum_ret
+#     bench = calcs(bench.loc[bench.index>=pandemic_bottom])
+    
+#     #Save data to two dfs
+#     col_name = i+'_log_return'
+#     col_name1 = i+'_cum_ret'
+#     prices[col_name] = bench.log_return
+#     cum_ret[col_name1] = bench.cum_ret
+    
+#     #Add overperformance of PGH relative
+#     row = {'over': i, 
+#            'value': pgh1['cum_ret'][-1]-bench['cum_ret'][-1]}
+#     performance = performance.append(row, ignore_index=True)
+    
+#     #Returns normalized log_returns of both
+#     data = prep_features(bench, pgh1)
+    
+#     #Scatter and plot regression line with regression summary
+#     graph2(data, title=f'Regression of PACT with {i}')
+        
+# for i in list(currencies):
+#     bench = yf.Ticker(i)
+#     bench = bench.history(period='5y', interval='1d')
+#     #Calculate returns, cum_ret
+#     bench = calcs(bench.loc[bench.index>=pandemic_bottom])
+#     # print(bench)
+#     #Save data to two dfs
+#     col_name = i+'_log_return'
+#     col_name1 = i+'_cum_ret'
+#     prices[col_name] = bench.log_return
+#     cum_ret[col_name1] = bench.cum_ret
+    
+#     #Add overperformance of PGH relative
+#     row = {'over': i, 
+#            'value': pgh1['cum_ret'][-1]-bench['cum_ret'][-1]}
+#     performance = performance.append(row, ignore_index=True)
+    
+#     #Returns normalized log_returns of both
+#     data = prep_features(bench, pgh1)
+    
+#     #Scatter and plot regression line with regression summary
+#     graph2(data, title=f'Regression of PACT with {i}')
+    
+# dfi.export(performance,"plots/performance.png")
 
 prices = prices.dropna()
 cum_ret = cum_ret.dropna()
